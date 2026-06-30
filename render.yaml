@@ -11,7 +11,7 @@ services:
     name: onesolutions-api
     runtime: docker
     plan: free
-    region: frankfurt            # closest free region to Egypt
+    region: virginia             # us-east, same region as the Neon DB
     dockerfilePath: ./api/Dockerfile
     dockerContext: ./api
     healthCheckPath: /api/health  # public endpoint → confirms the service is live
@@ -30,5 +30,5 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
-      - key: WEB_ORIGIN           # Vercel URL; with the same-origin proxy this is
-        sync: false               # not strictly required, but set it for safety.
+      # WEB_ORIGIN (CORS) intentionally omitted: with the same-origin Vercel proxy
+      # the browser never calls the API cross-origin, so CORS is never exercised.
