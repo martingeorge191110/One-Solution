@@ -1,8 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+
+// Loaded via require so it stays callable regardless of @types/cookie-parser's
+// export shape (which varies by version) without needing esModuleInterop.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const cookieParser = require('cookie-parser');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
