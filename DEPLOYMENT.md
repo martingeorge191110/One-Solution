@@ -1,83 +1,76 @@
-# ONE SOLUTIONS — Free Demo Deployment
+# ONE SOLUTIONS — Live Demo Deployment
 
-Stack chosen for a free, no-custom-domain demo:
+Fully free, card-free demo. Everything runs on Vercel + Neon.
 
-| Layer | Service | Public URL | Notes |
-|-------|---------|-----------|-------|
-| Web (Next.js) | **Vercel** | `https://<project>.vercel.app` | Native Next build. Proxies `/api/*` → Render. |
-| API (NestJS)  | **Render** (free Docker web service) | `https://onesolutions-api.onrender.com` | Auto HTTPS. Spins down after ~15 min idle (cold start ~50s). |
-| Database | **Neon** (free managed Postgres) | — | Persistent, SSL. Auto-suspends compute when idle. |
+| Layer | Service | URL |
+|-------|---------|-----|
+| Web (Next.js) | **Vercel** project `one-solutions` | **https://one-solutions-theta.vercel.app** |
+| API (NestJS)  | **Vercel** project `one-solutions-api` (serverless) | https://one-solutions-api.vercel.app |
+| Database | **Neon** (free managed Postgres, us-east-1) | — |
 
-> **Why not Cloudflare for the API?** Cloudflare Workers run V8 isolates, not a
-> long-running Node server — NestJS can't run there. Cloudflare is frontend-only.
+**Admin login:** `admin@onesolutions.demo` / `RKSgW0rcr1mX!Aa1` — **rotate after first login.**
+(Secrets live in `api/.env.production`, gitignored, and in each Vercel project's env vars.)
 
-## Networking / auth model (critical)
+> We originally targeted Render for the API, but Render now gates even free services
+> behind a credit card. Hosting the API on Vercel as a serverless function keeps the
+> whole stack free and card-free. `render.yaml` remains in the repo as an alternative.
 
-Auth uses **httpOnly cookies** (`secure`, `sameSite=lax`, no `Domain`). To keep
-cookies first-party with no custom domain we use a **same-origin proxy**:
+## How it fits together (auth + networking)
 
-- Web is built with `NEXT_PUBLIC_API_URL=/api` (relative, baked at build time).
-- Web runtime env `BACKEND_ORIGIN=https://onesolutions-api.onrender.com`.
+Auth uses httpOnly cookies (`secure`, `sameSite=lax`, **no `Domain`**). To keep them
+first-party with no custom domain, the browser only ever talks to the **web** origin:
+
+- Web built with `NEXT_PUBLIC_API_URL=/api` (relative, baked at build time).
+- Web env `BACKEND_ORIGIN=https://one-solutions-api.vercel.app` (build+runtime).
 - `web/next.config.ts` rewrites `/api/:path*` → `${BACKEND_ORIGIN}/api/:path*`.
-- The browser talks **only** to the Vercel origin → cookies bind to `*.vercel.app`,
-  `secure`+HTTPS+`sameSite=lax` all satisfied, no CORS, no third-party cookies.
+- Browser → `one-solutions-theta.vercel.app/api/*` → (Next rewrite, server-side) → API.
+  Cookies bind to the web origin; `secure`+HTTPS+`sameSite=lax` all satisfied; no CORS.
 
-## Production secrets (generated — keep out of git)
+The API is a single Vercel serverless function: `api/api/index.js` loads the compiled
+`dist/src/serverless.js`, which boots Nest once (cached across warm invocations) and
+hands Vercel the Express instance. `vercel.json` runs `prisma generate && nest build`
+and bundles the Prisma query engine (`rhel-openssl-3.0.x`).
 
-Stored locally in `api/.env.production` (gitignored). Set the same values in the
-Render dashboard. Rotate the admin password after first login.
+> Cold start: first request after ~idle pays ~1-2s Nest bootstrap. Fine for a demo.
 
-```
-JWT_SECRET=<48-byte hex>
-JWT_REFRESH_SECRET=<different 48-byte hex>
-SEED_SUPERADMIN_EMAIL=<real admin email>
-SEED_SUPERADMIN_PASSWORD=<strong>
-```
+## Vercel projects / env vars
 
-## One-time deploy steps
+Scope/team: `martin-s-projects191110` (`team_4Z1BfxyWkU5Af0RnsXXThSpv`).
+**Deployment Protection (Vercel Authentication) is disabled** on both projects so the
+demo is publicly reachable (it is ON by default for new projects).
 
-### 1. Database — Neon
-1. Create a Neon project (free). Copy the **pooled** connection string
-   (`...-pooler...?sslmode=require`).
-2. From this machine (Node 22, api devDeps present), apply schema + seed:
-   ```fish
-   set -x PATH /root/.nvm/versions/node/v22.3.0/bin $PATH
-   cd api
-   set -x DATABASE_URL "postgresql://...neon...?sslmode=require"
-   set -x SEED_SUPERADMIN_EMAIL "admin@…"
-   set -x SEED_SUPERADMIN_PASSWORD "…"
-   npx prisma migrate deploy   # applies the 2 committed migrations
-   npm run seed                # idempotent; creates super admin + system data
-   ```
+- `one-solutions-api` env: `DATABASE_URL` (Neon, `&connection_limit=1`), `JWT_SECRET`,
+  `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN=15m`, `JWT_REFRESH_EXPIRES_IN=7d`.
+  (`NODE_ENV=production` is set automatically by Vercel in prod.)
+- `one-solutions` (web) env: `NEXT_PUBLIC_API_URL=/api`, `BACKEND_ORIGIN=https://one-solutions-api.vercel.app`.
 
-### 2. API — Render
-1. Push this repo to GitHub.
-2. Render → New → **Blueprint** → pick the repo → it reads `render.yaml`.
-3. Fill the `sync:false` secrets: `DATABASE_URL` (Neon), `JWT_SECRET`,
-   `JWT_REFRESH_SECRET`, `WEB_ORIGIN` (set after Vercel URL is known).
-4. Deploy. Verify: `https://onesolutions-api.onrender.com/api/health` → `{"status":"ok"}`.
+## Redeploy
 
-### 3. Web — Vercel
-From `web/` (Vercel CLI, no GitHub needed):
 ```fish
-cd web
-vercel link
-vercel env add NEXT_PUBLIC_API_URL production   # value: /api
-vercel env add BACKEND_ORIGIN production         # value: https://onesolutions-api.onrender.com
-vercel --prod
+set -x PATH /root/.nvm/versions/node/v22.3.0/bin $PATH
+set -x VERCEL_TOKEN <token>
+set -x SCOPE martin-s-projects191110
+
+# API
+cd api;  vercel deploy --prod --yes --scope $SCOPE --token $VERCEL_TOKEN
+# Web (rebuild required if NEXT_PUBLIC_API_URL or BACKEND_ORIGIN changes)
+cd web;  vercel deploy --prod --yes --scope $SCOPE --token $VERCEL_TOKEN
 ```
-> `NEXT_PUBLIC_API_URL` is build-time — if it changes, redeploy.
 
-### 4. Verify end-to-end (over HTTPS)
-- Open the Vercel URL → redirects to `/ar`.
-- Log in with the seeded admin.
-- Delete the `access_token` cookie in devtools → next action still works (auto-refresh).
-- Create a quotation → print the PDF (Amiri fonts + logo render).
-- Record a payment (splits supervision vs operational).
+## Database migrations / seed (run from a dev machine — the serverless image has no prisma CLI)
 
-## Redeploy / maintenance
-- **Web:** `cd web && vercel --prod`.
-- **API:** push to the connected branch (autoDeploy) or "Manual Deploy" in Render.
-- **New migration:** run `npx prisma migrate deploy` from a dev machine against Neon
-  (the Render image has no prisma CLI), then redeploy the API if code changed.
-- **Backups:** `pg_dump "$DATABASE_URL" > backup.sql` (Neon also keeps PITR on free tier).
+```fish
+set -x PATH /root/.nvm/versions/node/v22.3.0/bin $PATH
+cd api
+set -x DATABASE_URL "postgresql://neondb_owner:...@ep-snowy-field-atfc6drx.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require"
+npx prisma migrate deploy     # apply new migrations
+npm run seed                  # idempotent
+# Backups: pg_dump "$DATABASE_URL" > backup.sql   (Neon also keeps PITR)
+```
+
+## Verified end-to-end (HTTPS, via the web origin)
+
+health 200 · login 201 (Secure/HttpOnly/SameSite=Lax cookies) · `/api/auth/me` ·
+dashboard 200 · seeded Arabic system data from Neon · token refresh 201 · login page
+RTL renders · logo + Amiri fonts served. PDF print is client-side in the browser
+(no server Chromium) and uses the bundled Amiri fonts + logo.
