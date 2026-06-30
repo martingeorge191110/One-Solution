@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum PricingMode {
+  UNIT
+  LUMP_SUM
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum AlertType {
+  REMAINING_OPERATIONAL_LOW
+}
+
+enum AlertMode {
+  AMOUNT
+  PERCENT
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(ADMIN)
+  isActive     Boolean    @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[] @relation("ActorAudit")
+}
+
+model Client {
+  id          String    @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  deletedById String?
+}
+
+model Project {
+  id                 String           @id @default(uuid())
+  clientId           String
+  client             Client           @relation(fields: [clientId], references: [id])
+  name               String
+  location           String?
+  unitType           String?
+  description        String?
+  supervisionPercent Decimal          @default(0) @db.Decimal(6, 2)
+  status             ProjectStatus    @default(DRAFT)
+  activatedAt        DateTime?
+  quotations         Quotation[]
+  payments           Payment[]
+  dailyLogs          DailyLog[]
+  alertThresholds    AlertThreshold[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  deletedById        String?
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Term {
+  id             String          @id @default(uuid())
+  nameAr         String
+  nameEn         String?
+  description    String?
+  order          Int             @default(0)
+  isActive       Boolean         @default(true)
+  items          Item[]
+  quotationLines QuotationLine[]
+  dailyLogs      DailyLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  deletedById    String?
+}
+
+model Item {
+  id          String     @id @default(uuid())
+  termId      String
+  term        Term       @relation(fields: [termId], references: [id])
+  nameAr      String
+  nameEn      String?
+  defaultUnit String?
+  order       Int        @default(0)
+  isActive    Boolean    @default(true)
+  dailyLogs   DailyLog[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  deletedById String?
+
+  @@index([termId])
+}
+
+model TermsCondition {
+  id          String    @id @default(uuid())
+  titleAr     String?
+  titleEn     String?
+  bodyAr      String
+  bodyEn      String?
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  deletedById String?
+}
+
+model AlertThreshold {
+  id          String    @id @default(uuid())
+  type        AlertType @default(REMAINING_OPERATIONAL_LOW)
+  mode        AlertMode @default(AMOUNT)
+  value       Decimal   @db.Decimal(14, 2)
+  basis       String?
+  isActive    Boolean   @default(true)
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  @@unique([type, projectId])
+  @@index([projectId])
+}
+
+model Quotation {
+  id                 String               @id @default(uuid())
+  projectId          String
+  project            Project              @relation(fields: [projectId], references: [id])
+  quotationNumber    String               @unique
+  date               DateTime             @default(now())
+  status             QuotationStatus      @default(DRAFT)
+  supervisionPercent Decimal              @default(0) @db.Decimal(6, 2)
+  subtotal           Decimal              @default(0) @db.Decimal(14, 2)
+  supervisionAmount  Decimal              @default(0) @db.Decimal(14, 2)
+  grandTotal         Decimal              @default(0) @db.Decimal(14, 2)
+  subject            String?
+  notes              String?
+  approvedAt         DateTime?
+  approvedById       String?
+  lines              QuotationLine[]
+  conditions         QuotationCondition[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  deletedById        String?
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model QuotationLine {
+  id            String      @id @default(uuid())
+  quotationId   String
+  quotation     Quotation   @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  termId        String
+  term          Term        @relation(fields: [termId], references: [id])
+  order         Int         @default(0)
+  pricingMode   PricingMode @default(UNIT)
+  unit          String?
+  quantity      Decimal?    @db.Decimal(14, 2)
+  unitPrice     Decimal?    @db.Decimal(14, 2)
+  lineTotal     Decimal     @default(0) @db.Decimal(14, 2)
+  descriptionAr String?
+  descriptionEn String?
+
+  @@index([quotationId])
+  @@index([termId])
+}
+
+model QuotationCondition {
+  id          String    @id @default(uuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  order       Int       @default(0)
+  titleAr     String?
+  titleEn     String?
+  bodyAr      String
+  bodyEn      String?
+
+  @@index([quotationId])
+}
+
+model Payment {
+  id                 String    @id @default(uuid())
+  projectId          String
+  project            Project   @relation(fields: [projectId], references: [id])
+  amount             Decimal   @db.Decimal(14, 2)
+  paidAt             DateTime
+  method             String?
+  reference          String?
+  notes              String?
+  supervisionPercent Decimal   @default(0) @db.Decimal(6, 2)
+  operationalAmount  Decimal   @default(0) @db.Decimal(14, 2)
+  supervisionAmount  Decimal   @default(0) @db.Decimal(14, 2)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  deletedById        String?
+
+  @@index([projectId])
+  @@index([paidAt])
+}
+
+model DailyLog {
+  id               String    @id @default(uuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id])
+  logDate          DateTime
+  isAdditional     Boolean   @default(false)
+  termId           String?
+  term             Term?     @relation(fields: [termId], references: [id])
+  itemId           String?
+  item             Item?     @relation(fields: [itemId], references: [id])
+  additionalNameAr String?
+  additionalNameEn String?
+  quantity         Decimal?  @db.Decimal(14, 2)
+  unit             String?
+  unitPrice        Decimal?  @db.Decimal(14, 2)
+  amount           Decimal   @default(0) @db.Decimal(14, 2)
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  deletedById      String?
+
+  @@index([projectId])
+  @@index([logDate])
+  @@index([termId])
+  @@index([itemId])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String?
+  actor     User?       @relation("ActorAudit", fields: [actorId], references: [id])
+  action    AuditAction
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
