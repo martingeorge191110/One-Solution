@@ -24,3 +24,7 @@ api/prisma/generated/
 # editor
 .vscode/
 .idea/
+
+# vercel
+.vercel
+**/.vercel
