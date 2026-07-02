@@ -39,7 +39,10 @@ Scope/team: `martin-s-projects191110` (`team_4Z1BfxyWkU5Af0RnsXXThSpv`).
 **Deployment Protection (Vercel Authentication) is disabled** on both projects so the
 demo is publicly reachable (it is ON by default for new projects).
 
-- `one-solutions-api` env: `DATABASE_URL` (Neon, `&connection_limit=1`), `JWT_SECRET`,
+- `one-solutions-api` env: `DATABASE_URL` (Neon, `&connection_limit=5` — MUST be ≥2:
+  the quotation create runs an interactive transaction while the Prisma audit
+  extension writes AuditLog on a second connection; `connection_limit=1` deadlocks
+  → 500), `JWT_SECRET`,
   `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN=15m`, `JWT_REFRESH_EXPIRES_IN=7d`.
   (`NODE_ENV=production` is set automatically by Vercel in prod.)
 - `one-solutions` (web) env: `NEXT_PUBLIC_API_URL=/api`, `BACKEND_ORIGIN=https://one-solutions-api.vercel.app`.
